@@ -38,27 +38,55 @@ def plot_grid(grid, agent_pos=None, title="GridWorld", savepath=None):
         plt.savefig(savepath, bbox_inches='tight')
     plt.show()
 
-def draw_policy(grid, policy, title="Policy", savepath=None):
+def draw_policy(grid, policy, start, goal, title="Optimal Path", savepath=None):
     rows, cols = grid.shape
     plt.figure(figsize=(cols/2, rows/2))
+
+    # Vẽ ô
     for r in range(rows):
         for c in range(cols):
-            val = grid[r,c]
+            val = grid[r, c]
             if val == 1:
-                color = 'black'
-                plt.gca().add_patch(plt.Rectangle((c, rows-1-r), 1, 1, edgecolor='gray', facecolor=color))
+                color = 'black'  # tường
+            elif val == 2:
+                color = 'green'  # goal
+            elif val == 3:
+                color = 'red'    # start (tùy bạn đặt)
             else:
-                plt.gca().add_patch(plt.Rectangle((c, rows-1-r), 1, 1, edgecolor='gray', facecolor='white'))
-                s = (r,c)
-                a = policy.get(s, None)
-                if a is not None:
-                    dx, dy = ACTION_ARROW[a]
-                    plt.arrow(c+0.5-dx/2, rows-1-r+0.5-dy/2, dx, dy, head_width=0.2, head_length=0.2)
+                color = 'white'
+            plt.gca().add_patch(plt.Rectangle((c, rows-1-r), 1, 1, edgecolor='gray', facecolor=color))
+
+    # Truy vết đường đi theo policy
+    path = []
+    s = start
+    visited = set()
+    while s != goal and s not in visited:
+        visited.add(s)
+        path.append(s)
+        a = policy.get(s, None)
+        if a is None:
+            break
+        dr, dc = ACTION_TO_VEC[a]
+        s = (s[0] + dr, s[1] + dc)
+        if not (0 <= s[0] < rows and 0 <= s[1] < cols):
+            break
+    path.append(goal)
+
+    # Vẽ đường đi
+    if len(path) > 1:
+        xs = [c + 0.5 for (r, c) in path]
+        ys = [rows - 1 - r + 0.5 for (r, c) in path]
+        plt.plot(xs, ys, 'b-', linewidth=2.5, label='Optimal Path')
+        plt.scatter(xs[0], ys[0], color='red', s=100, label='Start')
+        plt.scatter(xs[-1], ys[-1], color='green', s=100, label='Goal')
+
     plt.xlim(0, cols)
     plt.ylim(0, rows)
     plt.gca().set_aspect('equal')
     plt.gca().axis('off')
     plt.title(title)
+    plt.legend()
+
     if savepath:
         os.makedirs(os.path.dirname(savepath), exist_ok=True)
         plt.savefig(savepath, bbox_inches='tight')

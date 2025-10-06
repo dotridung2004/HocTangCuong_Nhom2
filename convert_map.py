@@ -3,7 +3,7 @@ import numpy as np
 import json
 import os
 
-def convert_image_to_grid(img_path, grid_size=(60, 30), start=(1,1), goal=(28,58), save_path="maps/dhtl_map.json"):
+def convert_image_to_grid(img_path, grid_size=(60, 30), start=(1,1), goal=(28,48), save_path="maps/dhtl_map.json"):
     """
     Chuyển ảnh bản đồ thành lưới 0/1/2/3
     0 = đường, 1 = tường, 2 = start, 3 = goal
