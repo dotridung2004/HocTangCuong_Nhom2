@@ -20,13 +20,13 @@ ACTION_TO_VEC = {
 
 class GridWorld:
     """
-    Deterministic GridWorld environment.
-    Map encoding:
-      0 = free
-      1 = wall
-      2 = start
-      3 = goal
-    Robot position tracked separately (r, c).
+    Môi trường GridWorld.
+    # === SỬA LẠI: Cập nhật quy ước map cho đúng với dự án ===
+    Quy ước map:
+      0 = tường (vật cản)
+      1 = đường đi
+      2 = điểm bắt đầu
+      3 = điểm kết thúc
     """
     def __init__(self, grid: np.ndarray, step_reward=-1, wall_reward=-5, goal_reward=100, max_steps=500, seed=None):
         self.grid = grid.copy()
@@ -37,24 +37,18 @@ class GridWorld:
         self.max_steps = max_steps
         self.seed = seed
         self.rng = random.Random(seed)
-        # find start(s) and goal(s)
+        
         self.starts = list(zip(*np.where(self.grid == 2)))
         self.goals = list(zip(*np.where(self.grid == 3)))
+        
         if not self.starts:
-            raise ValueError("Map must contain at least one start cell (value 2).")
+            raise ValueError("Bản đồ phải chứa ít nhất một ô bắt đầu (giá trị 2).")
         if not self.goals:
-            raise ValueError("Map must contain at least one goal cell (value 3).")
+            raise ValueError("Bản đồ phải chứa ít nhất một ô kết thúc (giá trị 3).")
+            
         self.reset()
 
-    @classmethod
-    def from_json(cls, path, **kwargs):
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        grid = np.array(data['grid'], dtype=int)
-        return cls(grid, **kwargs)
-
     def reset(self, start_pos=None):
-        # place robot at start (either specified or random among starts)
         if start_pos is None:
             self.pos = self.rng.choice(self.starts)
         else:
@@ -64,7 +58,6 @@ class GridWorld:
         return self._get_state()
 
     def _get_state(self):
-        # state as (r,c)
         return self.pos
 
     def in_bounds(self, r, c):
@@ -73,15 +66,13 @@ class GridWorld:
     def is_wall(self, r, c):
         if not self.in_bounds(r, c):
             return True
-        return self.grid[r, c] == 1
+        # === SỬA LẠI: Tường là ô có giá trị 0 ===
+        return self.grid[r, c] == 0
 
     def is_goal(self, r, c):
         return self.in_bounds(r, c) and self.grid[r, c] == 3
 
     def step(self, action: int) -> Tuple[Tuple[int,int], float, bool, dict]:
-        """
-        Perform action (deterministic). Return (next_state, reward, done, info)
-        """
         if self.done:
             return self._get_state(), 0.0, True, {}
 
@@ -89,10 +80,10 @@ class GridWorld:
         nr, nc = self.pos[0] + dr, self.pos[1] + dc
         self.steps += 1
 
-        # hitting wall or out of bounds
-        if not self.in_bounds(nr, nc) or self.grid[nr, nc] == 1:
+        # === SỬA LẠI: Kiểm tra va chạm với tường (giá trị 0) ===
+        if not self.in_bounds(nr, nc) or self.grid[nr, nc] == 0:
             reward = self.wall_reward
-            next_pos = self.pos  # no movement
+            next_pos = self.pos
             done = False
         else:
             next_pos = (nr, nc)
@@ -103,7 +94,6 @@ class GridWorld:
                 reward = self.step_reward
                 done = False
 
-        # step count limit
         if self.steps >= self.max_steps:
             done = True
 
@@ -112,16 +102,11 @@ class GridWorld:
         return self._get_state(), float(reward), done, {}
 
     def get_all_states(self):
-        """Return list of all free/start/goal coordinate tuples (non-wall)."""
+        """Trả về danh sách tất cả các ô không phải là tường."""
         coords = []
         for r in range(self.n_rows):
             for c in range(self.n_cols):
-                if self.grid[r, c] != 1:
+                # === SỬA LẠI: Trạng thái hợp lệ là các ô không phải tường (giá trị 0) ===
+                if self.grid[r, c] != 0:
                     coords.append((r, c))
         return coords
-
-    def save_to_json(self, path):
-        data = {'grid': self.grid.tolist()}
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
