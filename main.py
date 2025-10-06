@@ -1,159 +1,146 @@
-# ===============================
 # file: main.py
-# ===============================
 import os
+import argparse
 import numpy as np
 from env.gridworld import GridWorld
-from utils.map_io import load_map_json
+from utils.map_io import load_map_json, save_map_json
 from algorithms.value_iteration import value_iteration
 from algorithms.policy_iteration import policy_iteration
 from algorithms.q_learning import q_learning
 from algorithms.sarsa import sarsa
-from utils.visualize import plot_grid, draw_policy, plot_learning_curve
+from utils.visualize import plot_grid, draw_policy, draw_optimal_path, plot_learning_curve
 
+CONFIG = {
+    "dp": {"gamma": 0.9},
+    "q_learning": {
+        "num_episodes": 15000, 
+        "alpha": 0.1, 
+        "gamma": 0.9, 
+        "epsilon": 1.0, 
+        "epsilon_decay": 0.9995, 
+        "seed": 42
+    },
+    "sarsa": {
+        "num_episodes": 15000,       # Giữ nguyên số tập huấn luyện hoặc tăng thêm
+        "alpha": 0.05,              # <-- THAY ĐỔI: Giảm tốc độ học
+        "gamma": 0.99,              # <-- THAY ĐỔI: Tăng hệ số chiết khấu
+        "epsilon": 1.0, 
+        "epsilon_decay": 0.9999,    # <-- THAY ĐỔI: Giảm tốc độ suy giảm epsilon
+        "seed": 24
+    },
+    "env": {
+        "step_reward": -1, 
+        "wall_reward": -5, 
+        "goal_reward": 100, 
+        "max_steps": 1000, 
+        "seed": 123
+    }
+}
 
-# ===============================
-# 1️⃣ Chạy các thuật toán Dynamic Programming
-# ===============================
-def run_dp(env):
-    print("▶ Running Value Iteration...")
-    V_vi, policy_vi = value_iteration(env, gamma=0.9)
-    draw_policy(env.grid, policy_vi,
-                title="Policy - Value Iteration",
-                savepath="results/policy_vi.png")
+def choose_start_goal(grid, save_path):
+    """Hàm nhập Start/Goal an toàn, chặn các lựa chọn không hợp lệ."""
+    rows, cols = grid.shape
+    print(f"\nBản đồ có kích thước: {rows} x {cols}")
+    print("⚠ Lưu ý: chỉ số bắt đầu từ 0")
 
-    print("▶ Running Policy Iteration...")
-    V_pi, policy_pi = policy_iteration(env, gamma=0.9)
-    draw_policy(env.grid, policy_pi,
-                title="Policy - Policy Iteration",
-                savepath="results/policy_pi.png")
+    def get_coord(point_name):
+        while True:
+            try:
+                r = int(input(f"Nhập hàng (row) điểm {point_name}: "))
+                c = int(input(f"Nhập cột (col) điểm {point_name}: "))
+                
+                if not (0 <= r < rows and 0 <= c < cols):
+                    print(f"❌ Lỗi: Tọa độ nằm ngoài bản đồ. Vui lòng nhập lại.")
+                    continue
+                
+                if grid[r, c] == 0: # Giả định tường là 0
+                    print(f"❌ Lỗi: Không thể đặt điểm trên vật cản (ô trắng). Vui lòng chọn ô màu đen.")
+                    continue
+                return r, c
+            except ValueError:
+                print("❌ Lỗi: Bạn phải nhập số nguyên.")
+    
+    print("\n--- Chọn điểm xuất phát (START) ---")
+    sr, sc = get_coord("START")
+    print("\n--- Chọn điểm đích (GOAL) ---")
+    gr, gc = get_coord("GOAL")
 
-    return policy_vi, policy_pi
+    grid[grid == 2] = 1 
+    grid[grid == 3] = 1
+    grid[sr, sc] = 2
+    grid[gr, gc] = 3
+    
+    save_map_json(grid, save_path)
+    print(f"\n✅ Đã cập nhật: Start=({sr},{sc}), Goal=({gr},{gc}) và lưu vào '{save_path}'")
+    return grid, (sr, sc)
 
-
-# ===============================
-# 2️⃣ Q-learning
-# ===============================
-def run_q_learning(env):
-    print("▶ Running Q-learning...")
-    Q, rewards, steps = q_learning(
-        env,
-        num_episodes=1500,
-        alpha=0.1,
-        gamma=0.9,
-        epsilon=1.0,
-        epsilon_decay=0.995,
-        seed=42
-    )
-    policy = {s: int(np.argmax(arr)) for s, arr in Q.items()}
-    draw_policy(env.grid, policy,
-                title="Policy - Q-learning",
-                savepath="results/policy_qlearning.png")
-    plot_learning_curve(rewards,
-                        title="Q-learning Rewards",
-                        savepath="results/learning_qlearning.png")
-    return policy
-
-
-# ===============================
-# 3️⃣ SARSA
-# ===============================
-def run_sarsa(env):
-    print("▶ Running SARSA...")
-    Q, rewards, steps = sarsa(
-        env,
-        num_episodes=1500,
-        alpha=0.1,
-        gamma=0.9,
-        epsilon=1.0,
-        epsilon_decay=0.995,
-        seed=24
-    )
-    policy = {s: int(np.argmax(arr)) for s, arr in Q.items()}
-    draw_policy(env.grid, policy,
-                title="Policy - SARSA",
-                savepath="results/policy_sarsa.png")
-    plot_learning_curve(rewards,
-                        title="SARSA Rewards",
-                        savepath="results/learning_sarsa.png")
-    return policy
-
-
-# ===============================
-# 4️⃣ Đánh giá chính sách
-# ===============================
-def evaluate_policy(env, policy, episodes=50):
-    successes, steps_list = 0, []
-    for ep in range(episodes):
-        state = env.reset()
-        done, steps = False, 0
-        while not done:
-            a = policy.get(state, None)
-            if a is None:
-                break
-            state, r, done, _ = env.step(a)
-            steps += 1
-            if steps > env.max_steps:
-                break
-        # nếu chạm đích
-        if tuple(env.pos) in env.goals:
-            successes += 1
-            steps_list.append(steps)
-    success_rate = successes / episodes * 100
-    avg_steps = np.mean(steps_list) if steps_list else None
-    return success_rate, avg_steps
-
-
-# ===============================
-# 5️⃣ Chương trình chính
-# ===============================
-def main():
+def main(args):
+    """Hàm chính điều khiển luồng chương trình."""
     os.makedirs("results", exist_ok=True)
+    os.makedirs("maps", exist_ok=True)
 
-    map_path = "maps/dhtl_map.json"
-    if not os.path.exists(map_path):
-        print(f"❌ Không tìm thấy file bản đồ: {map_path}")
-        print("👉 Hãy chạy convert_map.py trước để tạo file JSON từ ảnh.")
+    try:
+        grid = load_map_json(args.map)
+    except FileNotFoundError:
+        print(f"❌ Lỗi: Không tìm thấy file map '{args.map}'.")
         return
 
-    # --- Load map ---
-    print(f"📂 Loading map from: {map_path}")
-    grid = load_map_json(map_path)
+    grid, start_pos = choose_start_goal(grid, save_path=args.map)
+    env = GridWorld(grid, **CONFIG['env'])
 
-    # --- Khởi tạo môi trường ---
-    env = GridWorld(
-        grid,
-        step_reward=-1,
-        wall_reward=-5,
-        goal_reward=100,
-        max_steps=800,
-        seed=123
-    )
+    plot_grid(env.grid, title=f"Bản đồ: {os.path.basename(args.map)}", savepath="results/map.png")
+    
+    all_results = {}
+    
+    print("\n▶ Đang chạy Value & Policy Iteration...")
+    _, pi_vi = value_iteration(env, **CONFIG['dp'])
+    _, pi_pi = policy_iteration(env, **CONFIG['dp'])
+    all_results["Value Iteration"] = {"policy": pi_vi}
+    all_results["Policy Iteration"] = {"policy": pi_pi}
 
-    # --- Vẽ bản đồ ---
-    plot_grid(env.base_grid, title="DHTL Map (Start & Goal)", savepath="results/map.png")
+    print("\n▶ Đang chạy Q-learning...")
+    Q_ql, rewards_ql, _ = q_learning(env, **CONFIG['q_learning'])
+    policy_ql = {s: int(np.argmax(arr)) for s, arr in Q_ql.items()}
+    all_results["Q-learning"] = {"policy": policy_ql, "rewards": rewards_ql}
+    
+    print("\n▶ Đang chạy SARSA...")
+    Q_sarsa, rewards_sarsa, _ = sarsa(env, **CONFIG['sarsa'])
+    policy_sarsa = {s: int(np.argmax(arr)) for s, arr in Q_sarsa.items()}
+    all_results["SARSA"] = {"policy": policy_sarsa, "rewards": rewards_sarsa}
 
-    # --- Chạy Value Iteration + Policy Iteration ---
-    pi_vi, pi_pi = run_dp(env)
+    print("\n" + "="*50)
+    print("🎨 ĐANG VẼ KẾT QUẢ CHO TỪNG THUẬT TOÁN 🎨")
+    for name, result in all_results.items():
+        print(f"\n--- Kết quả cho: {name} ---")
+        policy = result["policy"]
+        
+        draw_policy(
+            env.grid, 
+            policy, 
+            title=f"Full Policy - {name}",
+            savepath=f"results/full_policy_{name.lower().replace(' ', '_')}.png"
+        )
+        
+        draw_optimal_path(
+            env.grid, 
+            policy, 
+            start_pos, 
+            title=f"Optimal Path - {name}",
+            savepath=f"results/optimal_path_{name.lower().replace(' ', '_')}.png"
+        )
+        
+        if "rewards" in result:
+            plot_learning_curve(
+                result["rewards"], 
+                title=f"{name} Rewards",
+                savepath=f"results/learning_{name.lower()}.png"
+            )
+            
+    print("="*50)
+    print("✅ Hoàn thành!")
 
-    # --- Chạy Q-learning & SARSA ---
-    pi_ql = run_q_learning(env)
-    pi_sarsa = run_sarsa(env)
-
-    # --- Đánh giá ---
-    print("\n📊 Đánh giá các chính sách:")
-    for name, policy in [
-        ("Value Iteration", pi_vi),
-        ("Policy Iteration", pi_pi),
-        ("Q-learning", pi_ql),
-        ("SARSA", pi_sarsa)
-    ]:
-        sr, avg = evaluate_policy(env, policy, episodes=50)
-        print(f"- {name:16}: Success {sr:.1f}% | Avg steps {avg}")
-
-
-# ===============================
-# 6️⃣ Entry point
-# ===============================
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Chạy các thuật toán RL trên GridWorld.")
+    parser.add_argument("--map", type=str, default="maps/dhtl_map.json", help="Đường dẫn tới file map JSON.")
+    args = parser.parse_args()
+    main(args)

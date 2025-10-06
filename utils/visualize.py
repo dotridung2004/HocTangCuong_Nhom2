@@ -1,112 +1,125 @@
 # file: utils/visualize.py
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 import os
 
-ACTION_TO_VEC = {0:(-1,0),1:(1,0),2:(0,-1),3:(0,1)}
-ACTION_ARROW = {0: (0, 0.4), 1: (0, -0.4), 2: (-0.4, 0), 3: (0.4, 0)}
-ACTION_TO_CHAR = {0:'↑',1:'↓',2:'←',3:'→'}
+def plot_grid(grid, title="", ax=None, savepath=None):
+    """
+    Vẽ bản đồ grid một cách hiệu quả với màu sắc tùy chỉnh.
+    """
+    if ax is None:
+        rows, cols = grid.shape
+        figsize_ratio = 0.5
+        fig_width, fig_height = max(8, cols * figsize_ratio), max(4, rows * figsize_ratio)
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
-def plot_grid(grid, agent_pos=None, title="GridWorld", savepath=None):
+    # Quy ước màu: 0:trắng (tường), 1:đen (đường đi), 2:xanh lá (start), 3:đỏ (goal)
+    cmap = ListedColormap(['white', 'black', 'green', 'red'])
+    
+    ax.imshow(grid, cmap=cmap, interpolation='nearest', vmin=0, vmax=3)
+
     rows, cols = grid.shape
-    plt.figure(figsize=(cols/2, rows/2))
-    cmap = plt.get_cmap('tab20')
-    # draw squares
-    for r in range(rows):
-        for c in range(cols):
-            val = grid[r,c]
-            if val == 1:
-                color = 'black'
-            elif val == 0:
-                color = 'white'
-            elif val == 2:
-                color = 'green'
-            elif val == 3:
-                color = 'red'
-            plt.gca().add_patch(plt.Rectangle((c, rows-1-r), 1, 1, edgecolor='gray', facecolor=color))
-    # agent
-    if agent_pos is not None:
-        ar, ac = agent_pos
-        plt.text(ac+0.5, rows-1-ar+0.5, 'R', va='center', ha='center', fontsize=14, color='blue')
-    plt.xlim(0, cols)
-    plt.ylim(0, rows)
-    plt.gca().set_aspect('equal')
-    plt.gca().axis('off')
-    plt.title(title)
+    ax.set_xticks(np.arange(-.5, cols, 1), minor=True)
+    ax.set_yticks(np.arange(-.5, rows, 1), minor=True)
+    ax.grid(which="minor", color="gray", linestyle='-', linewidth=0.5)
+    ax.tick_params(which="minor", size=0)
+    
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(title, fontsize=16)
+
     if savepath:
         os.makedirs(os.path.dirname(savepath), exist_ok=True)
-        plt.savefig(savepath, bbox_inches='tight')
+        plt.savefig(savepath, bbox_inches='tight', pad_inches=0.1)
+    
+    return ax
+
+def draw_policy(grid, policy, title="Policy", savepath=None):
+    """
+    Hàm vẽ toàn bộ policy (mũi tên ở tất cả các ô đường đi).
+    """
+    rows, cols = grid.shape
+    figsize_ratio = 0.5
+    fig_width, fig_height = max(8, cols * figsize_ratio), max(4, rows * figsize_ratio)
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    plot_grid(grid, title=title, ax=ax)
+    arrow_map = {0: '↑', 1: '↓', 2: '←', 3: '→'}
+
+    for state, action in policy.items():
+        r, c = state
+        if grid[r, c] == 1: # Giả định đường đi là 1
+            ax.text(c, r, arrow_map.get(action, '?'), ha='center', va='center',
+                    color='white', fontsize=10, fontweight='bold')
+
+    if savepath:
+        os.makedirs(os.path.dirname(savepath), exist_ok=True)
+        plt.savefig(savepath, bbox_inches='tight', pad_inches=0.1)
+        print(f"✅ Đã lưu policy vào: {savepath}")
     plt.show()
 
-def draw_policy(grid, policy, start, goal, title="Optimal Path", savepath=None):
+def draw_optimal_path(grid, policy, start_pos, title="Optimal Path", savepath=None):
+    """
+    Vẽ con đường tối ưu từ start đến goal với các mũi tên chỉ hướng.
+    """
+    if not policy:
+        print(f"⚠️ Không thể vẽ đường đi cho '{title}' vì không có policy.")
+        return
+
     rows, cols = grid.shape
-    plt.figure(figsize=(cols/2, rows/2))
-
-    # Vẽ ô
-    for r in range(rows):
-        for c in range(cols):
-            val = grid[r, c]
-            if val == 1:
-                color = 'black'  # tường
-            elif val == 2:
-                color = 'green'  # goal
-            elif val == 3:
-                color = 'red'    # start (tùy bạn đặt)
-            else:
-                color = 'white'
-            plt.gca().add_patch(plt.Rectangle((c, rows-1-r), 1, 1, edgecolor='gray', facecolor=color))
-
-    # Truy vết đường đi theo policy
+    figsize_ratio = 0.5
+    fig_width, fig_height = max(8, cols * figsize_ratio), max(4, rows * figsize_ratio)
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    
+    plot_grid(grid, title=title, ax=ax)
+    
     path = []
-    s = start
-    visited = set()
-    while s != goal and s not in visited:
-        visited.add(s)
-        path.append(s)
-        a = policy.get(s, None)
-        if a is None:
+    current_pos = start_pos
+    path.append(current_pos)
+    
+    for _ in range(rows * cols): 
+        action = policy.get(current_pos, None)
+        if action is None or grid[current_pos] == 3:
             break
-        dr, dc = ACTION_TO_VEC[a]
-        s = (s[0] + dr, s[1] + dc)
-        if not (0 <= s[0] < rows and 0 <= s[1] < cols):
-            break
-    path.append(goal)
+        
+        dr, dc = {0: (-1, 0), 1: (1, 0), 2: (0, -1), 3: (0, 1)}[action]
+        next_pos = (current_pos[0] + dr, current_pos[1] + dc)
+        path.append(next_pos)
+        current_pos = next_pos
 
-    # Vẽ đường đi
-    if len(path) > 1:
-        xs = [c + 0.5 for (r, c) in path]
-        ys = [rows - 1 - r + 0.5 for (r, c) in path]
-        plt.plot(xs, ys, 'b-', linewidth=2.5, label='Optimal Path')
-        plt.scatter(xs[0], ys[0], color='red', s=100, label='Start')
-        plt.scatter(xs[-1], ys[-1], color='green', s=100, label='Goal')
-
-    plt.xlim(0, cols)
-    plt.ylim(0, rows)
-    plt.gca().set_aspect('equal')
-    plt.gca().axis('off')
-    plt.title(title)
-    plt.legend()
-
+    arrow_map = {0: '↑', 1: '↓', 2: '←', 3: '→'}
+    for i in range(len(path) - 1):
+        r, c = path[i]
+        action = policy.get((r, c), None)
+        
+        if action is not None and grid[r, c] != 2:
+            arrow = arrow_map.get(action)
+            ax.text(c, r, arrow, ha='center', va='center',
+                    color='cyan', fontsize=12, fontweight='bold')
+            
     if savepath:
         os.makedirs(os.path.dirname(savepath), exist_ok=True)
-        plt.savefig(savepath, bbox_inches='tight')
+        plt.savefig(savepath, bbox_inches='tight', pad_inches=0.1)
+        print(f"✅ Đã lưu đường đi tối ưu vào: {savepath}")
+        
     plt.show()
 
 def plot_learning_curve(rewards, title="Learning Curve", savepath=None):
-    import numpy as np
-    import matplotlib.pyplot as plt
-    x = np.arange(len(rewards))
-    plt.figure(figsize=(8,4))
-    plt.plot(x, rewards, label='episode reward')
-    # moving average
+    """
+    Vẽ biểu đồ học (learning curve).
+    """
+    plt.figure(figsize=(12, 6))
+    plt.plot(rewards, alpha=0.6, label='Phần thưởng mỗi tập')
     if len(rewards) >= 50:
-        ma = np.convolve(rewards, np.ones(50)/50, mode='valid')
-        plt.plot(np.arange(len(ma))+49, ma, label='MA(50)')
-    plt.xlabel('Episode')
-    plt.ylabel('Total Reward')
-    plt.title(title)
+        ma_rewards = np.convolve(rewards, np.ones(50)/50, mode='valid')
+        plt.plot(np.arange(len(ma_rewards)) + 49, ma_rewards, color='red', linewidth=2, label='Trung bình trượt (50 tập)')
+    plt.title(title, fontsize=16)
+    plt.xlabel("Tập (Episode)", fontsize=12)
+    plt.ylabel("Tổng phần thưởng (Total Reward)", fontsize=12)
+    plt.grid(True)
     plt.legend()
     if savepath:
         os.makedirs(os.path.dirname(savepath), exist_ok=True)
         plt.savefig(savepath, bbox_inches='tight')
+        print(f"✅ Đã lưu learning curve vào: {savepath}")
     plt.show()

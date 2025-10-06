@@ -1,9 +1,9 @@
-# env/gridworld.py
+# file: env/gridworld.py
 import numpy as np
 import json
 import os
 import random
-from typing import Tuple, List, Dict
+from typing import Tuple, List
 
 # Actions
 UP = 0
@@ -20,41 +20,33 @@ ACTION_TO_VEC = {
 
 class GridWorld:
     """
-    Deterministic GridWorld environment:
-      0 = Free
-      1 = Wall
-      2 = Start
-      3 = Goal
-      4 = Robot
+    Môi trường GridWorld.
+    # === SỬA LẠI: Cập nhật quy ước map cho đúng với dự án ===
+    Quy ước map:
+      0 = tường (vật cản)
+      1 = đường đi
+      2 = điểm bắt đầu
+      3 = điểm kết thúc
     """
-    def __init__(self, grid: np.ndarray, step_reward=-1, wall_reward=-5, goal_reward=100, 
-                 max_steps=500, gamma=0.9, seed=None):
-        self.base_grid = grid.copy()
+    def __init__(self, grid: np.ndarray, step_reward=-1, wall_reward=-5, goal_reward=100, max_steps=500, seed=None):
+        self.grid = grid.copy()
         self.n_rows, self.n_cols = grid.shape
         self.step_reward = step_reward
         self.wall_reward = wall_reward
         self.goal_reward = goal_reward
         self.max_steps = max_steps
-        self.gamma = gamma
         self.seed = seed
         self.rng = random.Random(seed)
-
-        # tìm start và goal
-        self.starts = list(zip(*np.where(self.base_grid == 2)))
-        self.goals = list(zip(*np.where(self.base_grid == 3)))
+        
+        self.starts = list(zip(*np.where(self.grid == 2)))
+        self.goals = list(zip(*np.where(self.grid == 3)))
+        
         if not self.starts:
-            raise ValueError("Map must contain at least one start cell (value 2).")
+            raise ValueError("Bản đồ phải chứa ít nhất một ô bắt đầu (giá trị 2).")
         if not self.goals:
-            raise ValueError("Map must contain at least one goal cell (value 3).")
-
+            raise ValueError("Bản đồ phải chứa ít nhất một ô kết thúc (giá trị 3).")
+            
         self.reset()
-
-    @classmethod
-    def from_json(cls, path, **kwargs):
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        grid = np.array(data['grid'], dtype=int)
-        return cls(grid, **kwargs)
 
     def reset(self, start_pos=None):
         if start_pos is None:
@@ -65,16 +57,22 @@ class GridWorld:
         self.done = False
         return self._get_state()
 
-    def _get_state(self) -> np.ndarray:
-        grid_with_robot = self.base_grid.copy()
-        r, c = self.pos
-        grid_with_robot[r, c] = 4
-        return grid_with_robot
+    def _get_state(self):
+        return self.pos
 
-    def in_bounds(self, r, c) -> bool:
+    def in_bounds(self, r, c):
         return 0 <= r < self.n_rows and 0 <= c < self.n_cols
 
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict]:
+    def is_wall(self, r, c):
+        if not self.in_bounds(r, c):
+            return True
+        # === SỬA LẠI: Tường là ô có giá trị 0 ===
+        return self.grid[r, c] == 0
+
+    def is_goal(self, r, c):
+        return self.in_bounds(r, c) and self.grid[r, c] == 3
+
+    def step(self, action: int) -> Tuple[Tuple[int,int], float, bool, dict]:
         if self.done:
             return self._get_state(), 0.0, True, {}
 
@@ -82,13 +80,14 @@ class GridWorld:
         nr, nc = self.pos[0] + dr, self.pos[1] + dc
         self.steps += 1
 
-        if not self.in_bounds(nr, nc) or self.base_grid[nr, nc] == 1:
+        # === SỬA LẠI: Kiểm tra va chạm với tường (giá trị 0) ===
+        if not self.in_bounds(nr, nc) or self.grid[nr, nc] == 0:
             reward = self.wall_reward
             next_pos = self.pos
             done = False
         else:
             next_pos = (nr, nc)
-            if self.base_grid[nr, nc] == 3:  # Goal
+            if self.is_goal(nr, nc):
                 reward = self.goal_reward
                 done = True
             else:
@@ -102,18 +101,12 @@ class GridWorld:
         self.done = done
         return self._get_state(), float(reward), done, {}
 
-    def get_all_states(self) -> List[np.ndarray]:
-        states = []
+    def get_all_states(self):
+        """Trả về danh sách tất cả các ô không phải là tường."""
+        coords = []
         for r in range(self.n_rows):
             for c in range(self.n_cols):
-                if self.base_grid[r, c] != 1:  # không phải wall
-                    g = self.base_grid.copy()
-                    g[r, c] = 4
-                    states.append(g)
-        return states
-
-    def save_to_json(self, path):
-        data = {'grid': self.base_grid.tolist()}
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+                # === SỬA LẠI: Trạng thái hợp lệ là các ô không phải tường (giá trị 0) ===
+                if self.grid[r, c] != 0:
+                    coords.append((r, c))
+        return coords
