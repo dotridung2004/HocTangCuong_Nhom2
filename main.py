@@ -6,8 +6,8 @@ from env.gridworld import GridWorld
 from utils.map_io import load_map_json, save_map_json
 from algorithms.value_iteration import value_iteration
 from algorithms.policy_iteration import policy_iteration
-from algorithms.q_learning import q_learning
-from algorithms.sarsa import sarsa
+from algorithms.q_learning import q_learning, state_to_key
+from algorithms.sarsa import sarsa, state_to_key as sarsa_state_to_key
 from utils.visualize import plot_grid, draw_policy, draw_optimal_path, plot_learning_curve
 
 CONFIG = {
@@ -21,11 +21,11 @@ CONFIG = {
         "seed": 42
     },
     "sarsa": {
-        "num_episodes": 15000,       # Giữ nguyên số tập huấn luyện hoặc tăng thêm
-        "alpha": 0.05,              # <-- THAY ĐỔI: Giảm tốc độ học
-        "gamma": 0.99,              # <-- THAY ĐỔI: Tăng hệ số chiết khấu
+        "num_episodes": 15000,       
+        "alpha": 0.05,              
+        "gamma": 0.99,              
         "epsilon": 1.0, 
-        "epsilon_decay": 0.9999,    # <-- THAY ĐỔI: Giảm tốc độ suy giảm epsilon
+        "epsilon_decay": 0.9999,    
         "seed": 24
     },
     "env": {
@@ -38,7 +38,7 @@ CONFIG = {
 }
 
 def choose_start_goal(grid, save_path):
-    """Hàm nhập Start/Goal an toàn, chặn các lựa chọn không hợp lệ."""
+    """Hàm nhập Start/Goal an toàn"""
     rows, cols = grid.shape
     print(f"\nBản đồ có kích thước: {rows} x {cols}")
     print("⚠ Lưu ý: chỉ số bắt đầu từ 0")
@@ -53,8 +53,8 @@ def choose_start_goal(grid, save_path):
                     print(f"❌ Lỗi: Tọa độ nằm ngoài bản đồ. Vui lòng nhập lại.")
                     continue
                 
-                if grid[r, c] == 0: # Giả định tường là 0
-                    print(f"❌ Lỗi: Không thể đặt điểm trên vật cản (ô trắng). Vui lòng chọn ô màu đen.")
+                if grid[r, c] == 0:
+                    print(f"❌ Lỗi: Không thể đặt điểm trên tường. Vui lòng chọn ô khác.")
                     continue
                 return r, c
             except ValueError:
@@ -74,8 +74,19 @@ def choose_start_goal(grid, save_path):
     print(f"\n✅ Đã cập nhật: Start=({sr},{sc}), Goal=({gr},{gc}) và lưu vào '{save_path}'")
     return grid, (sr, sc)
 
+def convert_policy_keys(Q):
+    """Chuyển từ state_to_key (tuple of tuple) sang (r,c) để vẽ policy"""
+    policy_rc = {}
+    for state_key, arr in Q.items():
+        grid_array = np.array(state_key)
+        pos = np.argwhere(grid_array == 4)
+        if len(pos) == 0:
+            continue
+        r, c = pos[0]
+        policy_rc[(r, c)] = int(np.argmax(arr))
+    return policy_rc
+
 def main(args):
-    """Hàm chính điều khiển luồng chương trình."""
     os.makedirs("results", exist_ok=True)
     os.makedirs("maps", exist_ok=True)
 
@@ -92,20 +103,21 @@ def main(args):
     
     all_results = {}
     
-    print("\n▶ Đang chạy Value & Policy Iteration...")
+    print("\n▶ Đang chạy Value Iteration...")
     _, pi_vi = value_iteration(env, **CONFIG['dp'])
-    _, pi_pi = policy_iteration(env, **CONFIG['dp'])
     all_results["Value Iteration"] = {"policy": pi_vi}
+    print("\n▶ Đang chạy Policy Iteration...")
+    _, pi_pi = policy_iteration(env, **CONFIG['dp'])
     all_results["Policy Iteration"] = {"policy": pi_pi}
 
     print("\n▶ Đang chạy Q-learning...")
     Q_ql, rewards_ql, _ = q_learning(env, **CONFIG['q_learning'])
-    policy_ql = {s: int(np.argmax(arr)) for s, arr in Q_ql.items()}
+    policy_ql = convert_policy_keys(Q_ql)
     all_results["Q-learning"] = {"policy": policy_ql, "rewards": rewards_ql}
     
     print("\n▶ Đang chạy SARSA...")
     Q_sarsa, rewards_sarsa, _ = sarsa(env, **CONFIG['sarsa'])
-    policy_sarsa = {s: int(np.argmax(arr)) for s, arr in Q_sarsa.items()}
+    policy_sarsa = convert_policy_keys(Q_sarsa)
     all_results["SARSA"] = {"policy": policy_sarsa, "rewards": rewards_sarsa}
 
     print("\n" + "="*50)

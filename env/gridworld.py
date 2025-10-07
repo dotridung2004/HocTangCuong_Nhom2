@@ -1,4 +1,4 @@
-# file: env/gridworld.py
+# file: env/gridworld_fullstate.py
 import numpy as np
 import random
 from typing import Tuple, List, Dict
@@ -13,11 +13,10 @@ ACTION_TO_VEC = {
     RIGHT: (0, 1)
 }
 
-
 class GridWorld:
     """
     Môi trường GridWorld mô phỏng bài toán MDP mê cung.
-
+    
     Mã ô:
         0 = Tường (không thể đi)
         1 = Đường đi (có thể đi)
@@ -34,7 +33,6 @@ class GridWorld:
                  max_steps: int = 200,
                  gamma: float = 0.9,
                  seed: int = None):
-
         self.grid = grid.copy()
         self.n_rows, self.n_cols = grid.shape
         self.step_reward = step_reward
@@ -51,21 +49,21 @@ class GridWorld:
         if not self.starts:
             raise ValueError("⚠️ Phải có ít nhất một ô Start (2).")
         if not self.goals:
-            raise ValueOut("⚠️ Phải có ít nhất một ô Goal (3).")
+            raise ValueError("⚠️ Phải có ít nhất một ô Goal (3).")
 
         self.reset()
 
     # -------------------------
     # Hàm khởi tạo lại môi trường
     # -------------------------
-    def reset(self, start_pos: Tuple[int, int] = None) -> Tuple[int, int]:
+    def reset(self, start_pos: Tuple[int, int] = None) -> np.ndarray:
         if start_pos is None:
             self.pos = self.rng.choice(self.starts)
         else:
             self.pos = tuple(start_pos)
         self.steps = 0
         self.done = False
-        return self.pos
+        return self.get_state()
 
     # -------------------------
     # Kiểm tra hợp lệ
@@ -74,17 +72,28 @@ class GridWorld:
         return 0 <= r < self.n_rows and 0 <= c < self.n_cols
 
     def is_wall(self, r: int, c: int) -> bool:
-        return self.in_bounds(r, c) and self.grid[r, c] == 0  # 0 là tường
+        return self.in_bounds(r, c) and self.grid[r, c] == 0
 
     def is_goal(self, r: int, c: int) -> bool:
         return self.in_bounds(r, c) and self.grid[r, c] == 3
 
     # -------------------------
+    # Lấy trạng thái full grid
+    # -------------------------
+    def get_state(self) -> np.ndarray:
+        """Trả về toàn bộ ma trận hiện tại với robot đánh dấu 4"""
+        grid_state = self.grid.copy()
+        r, c = self.pos
+        if grid_state[r, c] in [1, 2, 3]:
+            grid_state[r, c] = 4
+        return grid_state
+
+    # -------------------------
     # Hàm step
     # -------------------------
-    def step(self, action: int) -> Tuple[Tuple[int, int], float, bool, Dict]:
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict]:
         if self.done:
-            return self.pos, 0.0, True, {}
+            return self.get_state(), 0.0, True, {}
 
         dr, dc = ACTION_TO_VEC[action]
         nr, nc = self.pos[0] + dr, self.pos[1] + dc
@@ -109,13 +118,13 @@ class GridWorld:
 
         self.pos = next_pos
         self.done = done
-        return next_pos, reward, done, {}
+        return self.get_state(), reward, done, {}
 
     # -------------------------
     # Tập trạng thái hợp lệ
     # -------------------------
     def get_all_states(self) -> List[Tuple[int, int]]:
-        """Trả về tất cả các ô có thể đi (1, 2, 3)."""
+        """Trả về tất cả các ô có thể đi (1, 2, 3)"""
         return [(r, c)
                 for r in range(self.n_rows)
                 for c in range(self.n_cols)
@@ -125,8 +134,5 @@ class GridWorld:
     # Hiển thị
     # -------------------------
     def render(self):
-        grid_disp = self.grid.copy()
-        r, c = self.pos
-        if self.grid[r, c] in [1, 2, 3]:
-            grid_disp[r, c] = 4
+        grid_disp = self.get_state()
         print(grid_disp)
